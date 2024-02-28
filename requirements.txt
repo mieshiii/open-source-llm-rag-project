@@ -30,6 +30,7 @@ dnspython==2.6.1
 email-validator==2.1.0.post1
 exceptiongroup==1.2.0
 executing==2.0.1
+faiss-cpu==1.7.4
 fastapi==0.109.2
 frozenlist==1.4.1
 gitdb==4.0.11
