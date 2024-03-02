@@ -20,13 +20,14 @@ def load_index_data():
   #load data
   loader = PyPDFLoader("../data/MSFT_2022_Annual_Report.pdf")
   pages = loader.load_and_split()
-  #index data into vector store
-  faiss_index = FAISS.from_documents(pages, OpenAIEmbeddings())
-
-  return faiss_index
+ 
+  return pages
 
 def gen_response(input_text):
   llm = OpenAI(temperature=0.9, openai_api_key=os.environ["OPENAI_API_KEY"])
+  
+  #index data into vector store
+  faiss_index = FAISS.from_documents(load_index_data(), OpenAIEmbeddings())
 
   prompt = ChatPromptTemplate.from_template("""Answer the following question based only on the provided context:
 
@@ -34,18 +35,18 @@ def gen_response(input_text):
   {context}
   </context>
 
-  Question: {input_text}""")
+  Question: {input}""")
 
   document_chain = create_stuff_documents_chain(llm, prompt)
 
-  retriever = load_index_data().as_retriever()
+  retriever = faiss_index.as_retriever()
   retrieval_chain = create_retrieval_chain(retriever, document_chain)
 
-  res = retrieval_chain.invoke({"input_text": input_text})
-  st.info(res)
+  res = retrieval_chain.invoke({"input": input_text})
+  st.info(res["answer"])
 
 with st.form('test_form'):
   text = st.text_area("Enter text:")
   submitted = st.form_submit_button("Submit")
   if submitted:
-    gen_response(text)["answer"]
+    gen_response(text)
