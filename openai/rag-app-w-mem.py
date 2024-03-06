@@ -44,7 +44,7 @@ def gen_response(input_text):
   
   #add chat history for context
   #chat history is out of context for the actual application
-  chat_history = [HumanMessage(content="Can LangSmith help test my LLM applications?"), AIMessage(content="Yes!")]
+  chat_history = [HumanMessage(content="Can you help me summarize a document?"), AIMessage(content="Yes!")]
   res = retrieval_chain.invoke({
     "chat_history": chat_history,
     "input": input_text
