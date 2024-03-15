@@ -20,6 +20,8 @@ from langchain_core.messages import BaseMessage
 #base env variables
 llm = "mistral:instruct"
 
+# streamlit app
+st.title('Retrieval Agent App')
 
 #class for data typing
 class GraphState(TypedDict):
@@ -48,3 +50,11 @@ def retrieve(state):
     local = state_dict["local"]
     documents = retriever.get_relevant_documents(question)
     return {"keys": {"documents": documents, "local": local, "question": question}}
+
+# input form within st
+with st.form('test_form'):
+  text = st.text_area("Enter text:")
+  submitted = st.form_submit_button("Submit")
+  if submitted:
+    #response
+    response(text)["answer"]
