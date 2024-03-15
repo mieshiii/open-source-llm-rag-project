@@ -20,8 +20,13 @@ from langchain_core.messages import BaseMessage
 #base env variables
 llm = "mistral:instruct"
 
+#fetch env_key
+load_dotenv()
+os.environ["OPENAI_API_KEY"] = os.getenv("oai_key")
+os.environ["TAVILY_API_KEY"] = os.getenv("tavily_api_key")
+
 # streamlit app
-st.title('Retrieval Agent App')
+st.title('Mistral RAG App')
 
 #class for data typing
 class GraphState(TypedDict):
