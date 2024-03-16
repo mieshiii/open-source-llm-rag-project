@@ -28,6 +28,25 @@ os.environ["TAVILY_API_KEY"] = os.getenv("tavily_api_key")
 # streamlit app
 st.title('Mistral RAG App')
 
+loader = PyPDFLoader("../data/MSFT_2022_Annual_Report.pdf")
+pages = loader.load_and_split()
+
+text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+  chunk_size=512, chunk_overlap=80
+)
+
+pdf_split = text_splitter.split_documents(pages)
+
+embedding = GPT4AllEmbeddings()
+
+vector_store = Chroma.from_documents(
+  documents=pdf_split,
+  collection_name="rag_chroma",
+  embedding=embedding
+)
+
+retriever = vector_store.as_retriever()
+
 #class for data typing
 class GraphState(TypedDict):
     """
