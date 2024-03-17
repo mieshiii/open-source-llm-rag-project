@@ -2,7 +2,7 @@ import os
 import streamlit as st
 import json
 import operator
-from typing import Annotated, Sequence, TypedDict
+from typing import Annotated, Sequence, TypedDict, Dict
 from dotenv import load_dotenv
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
@@ -11,6 +11,7 @@ from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOllama
+from langchain_openai import OpenAI
 from langchain import hub
 from langchain.schema import Document
 from langchain_community.tools.tavily_search import TavilySearchResults
