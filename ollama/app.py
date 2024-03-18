@@ -19,7 +19,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.messages import BaseMessage
 
 #base env variables
-llm = "mistral:instruct"
+local_llm = "mistral:instruct"
 
 #fetch env_key
 load_dotenv()
@@ -105,7 +105,7 @@ def generate(state):
 
   # LLM
   if local == "Yes":
-    llm = ChatOllama(model=llm, temperature=0)
+    llm = ChatOllama(model=local_llm, temperature=0)
   else:
     llm = OpenAI(
       openai_api_key=os.environ["OPENAI_API_KEY"]
@@ -130,10 +130,10 @@ def grade_documents(state):
   Determines whether the retrieved documents are relevant to the question.
 
   Args:
-      state (dict): The current graph state
+    state (dict): The current graph state
 
   Returns:
-      state (dict): Updates documents key with relevant documents
+    state (dict): Updates documents key with relevant documents
   """
 
   print("---CHECK RELEVANCE---")
@@ -144,7 +144,7 @@ def grade_documents(state):
 
   # LLM
   if local == "Yes":
-    llm = ChatOllama(model=llm, format="json", temperature=0)
+    llm = ChatOllama(model=local_llm, format="json", temperature=0)
   else:
     llm = OpenAI(
       openai_api_key=os.environ["OPENAI_API_KEY"]
@@ -237,6 +237,58 @@ def transform_query(state):
   return {
     "keys": {"documents": documents, "question": better_question, "local": local}
   }
+
+def web_search(state):
+  """
+  Web search based on the re-phrased question using Tavily API.
+
+  Args:
+    state (dict): The current graph state
+
+  Returns:
+    state (dict): Web results appended to documents.
+  """
+
+  print("---WEB SEARCH---")
+  state_dict = state["keys"]
+  question = state_dict["question"]
+  documents = state_dict["documents"]
+  local = state_dict["local"]
+
+  tool = TavilySearchResults()
+  docs = tool.invoke({"query": question})
+  web_results = "\n".join([d["content"] for d in docs])
+  web_results = Document(page_content=web_results)
+  documents.append(web_results)
+
+  return {"keys": {"documents": documents, "local": local, "question": question}}
+
+def decide_to_generate(state):
+  """
+  Determines whether to generate an answer or re-generate a question for web search.
+
+  Args:
+    state (dict): The current state of the agent, including all keys.
+
+  Returns:
+    str: Next node to call
+  """
+
+  print("---DECIDE TO GENERATE---")
+  state_dict = state["keys"]
+  question = state_dict["question"]
+  filtered_documents = state_dict["documents"]
+  search = state_dict["run_web_search"]
+
+  if search == "Yes":
+    # All documents have been filtered check_relevance
+    # We will re-generate a new query
+    print("---DECISION: TRANSFORM QUERY and RUN WEB SEARCH---")
+    return "transform_query"
+  else:
+    # We have relevant documents, so generate answer
+    print("---DECISION: GENERATE---")
+    return "generate"
 
 # input form within st
 with st.form('test_form'):
