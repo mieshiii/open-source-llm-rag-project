@@ -11,12 +11,11 @@ from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOllama
-from langchain_openai import OpenAI
-from langchain import hub
 from langchain.schema import Document
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.messages import BaseMessage
+from langgraph.graph import END, StateGraph
 
 #base env variables
 local_llm = "mistral:instruct"
@@ -33,7 +32,7 @@ loader = PyPDFLoader("../data/MSFT_2022_Annual_Report.pdf")
 pages = loader.load_and_split()
 
 text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-  chunk_size=512, chunk_overlap=80
+  chunk_size=512, chunk_overlap=10
 )
 
 pdf_split = text_splitter.split_documents(pages)
@@ -48,49 +47,21 @@ vector_store = Chroma.from_documents(
 
 retriever = vector_store.as_retriever()
 
-#class for data typing
 class GraphState(TypedDict):
-  """
-  Represents the state of our graph.
-
-  Attributes:
-    keys: A dictionary where each key is a string.
-  """
-
   keys: Dict[str, any]
 
 def retrieve(state):
-  """
-  Retrieve documents
-
-  Args:
-    state (dict): The current graph state
-
-  Returns:
-    state (dict): New key added to state, documents, that contains retrieved documents
-  """
   print("---RETRIEVE---")
   state_dict = state["keys"]
   question = state_dict["question"]
-  local = state_dict["local"]
   documents = retriever.get_relevant_documents(question)
-  return {"keys": {"documents": documents, "local": local, "question": question}}
+  return {"keys": {"documents": documents, "question": question}}
 
 def generate(state):
-  """
-  Generate answer
-
-  Args:
-    state (dict): The current graph state
-
-  Returns:
-    state (dict): New key added to state, generation, that contains generation
-  """
   print("---GENERATE---")
   state_dict = state["keys"]
   question = state_dict["question"]
   documents = state_dict["documents"]
-  local = state_dict["local"]
 
   # Prompt
   prompt = PromptTemplate(
@@ -103,13 +74,7 @@ def generate(state):
     input_variables=["question", "context"],
   )
 
-  # LLM
-  if local == "Yes":
-    llm = ChatOllama(model=local_llm, temperature=0)
-  else:
-    llm = OpenAI(
-      openai_api_key=os.environ["OPENAI_API_KEY"]
-    )
+  llm = ChatOllama(model=local_llm, temperature=0)
 
   # Post-processing
   def format_docs(docs):
@@ -126,29 +91,12 @@ def generate(state):
 
 
 def grade_documents(state):
-  """
-  Determines whether the retrieved documents are relevant to the question.
-
-  Args:
-    state (dict): The current graph state
-
-  Returns:
-    state (dict): Updates documents key with relevant documents
-  """
-
   print("---CHECK RELEVANCE---")
   state_dict = state["keys"]
   question = state_dict["question"]
   documents = state_dict["documents"]
-  local = state_dict["local"]
 
-  # LLM
-  if local == "Yes":
-    llm = ChatOllama(model=local_llm, format="json", temperature=0)
-  else:
-    llm = OpenAI(
-      openai_api_key=os.environ["OPENAI_API_KEY"]
-    )
+  llm = ChatOllama(model=local_llm, format="json", temperature=0)
 
   prompt = PromptTemplate(
     template="""You are a grader assessing relevance of a retrieved document to a user question. \n 
@@ -186,28 +134,16 @@ def grade_documents(state):
     "keys": {
       "documents": filtered_docs,
       "question": question,
-      "local": local,
       "run_web_search": search,
     }
   }
 
 
 def transform_query(state):
-  """
-  Transform the query to produce a better question.
-
-  Args:
-    state (dict): The current graph state
-
-  Returns:
-    state (dict): Updates question key with a re-phrased question
-  """
-
   print("---TRANSFORM QUERY---")
   state_dict = state["keys"]
   question = state_dict["question"]
   documents = state_dict["documents"]
-  local = state_dict["local"]
 
   # Create a prompt template with format instructions and the query
   prompt = PromptTemplate(
@@ -217,43 +153,25 @@ def transform_query(state):
     \n ------- \n
     {question} 
     \n ------- \n
-    Provide an improved question without any premable, only respond with the updated question: """,
+    Provide an improved question without any preamble, only respond with the updated question: """,
     input_variables=["question"],
   )
 
-  # Grader
-  # LLM
-  if local == "Yes":
-    llm = ChatOllama(model=local_llm, temperature=0)
-  else:
-    llm = OpenAI(
-      openai_api_key=os.environ["OPENAI_API_KEY"]
-    )
+  llm = ChatOllama(model=local_llm, temperature=0)
 
   # Prompt
   chain = prompt | llm | StrOutputParser()
   better_question = chain.invoke({"question": question})
 
   return {
-    "keys": {"documents": documents, "question": better_question, "local": local}
+    "keys": {"documents": documents, "question": better_question}
   }
 
 def web_search(state):
-  """
-  Web search based on the re-phrased question using Tavily API.
-
-  Args:
-    state (dict): The current graph state
-
-  Returns:
-    state (dict): Web results appended to documents.
-  """
-
   print("---WEB SEARCH---")
   state_dict = state["keys"]
   question = state_dict["question"]
   documents = state_dict["documents"]
-  local = state_dict["local"]
 
   tool = TavilySearchResults()
   docs = tool.invoke({"query": question})
@@ -261,19 +179,9 @@ def web_search(state):
   web_results = Document(page_content=web_results)
   documents.append(web_results)
 
-  return {"keys": {"documents": documents, "local": local, "question": question}}
+  return {"keys": {"documents": documents, "question": question}}
 
 def decide_to_generate(state):
-  """
-  Determines whether to generate an answer or re-generate a question for web search.
-
-  Args:
-    state (dict): The current state of the agent, including all keys.
-
-  Returns:
-    str: Next node to call
-  """
-
   print("---DECIDE TO GENERATE---")
   state_dict = state["keys"]
   question = state_dict["question"]
@@ -289,6 +197,34 @@ def decide_to_generate(state):
     # We have relevant documents, so generate answer
     print("---DECISION: GENERATE---")
     return "generate"
+
+#app workflow  
+workflow = StateGraph(GraphState)
+
+# Define the nodes
+workflow.add_node("retrieve", retrieve)  # retrieve
+workflow.add_node("grade_documents", grade_documents)  # grade documents
+workflow.add_node("generate", generate)  # generatae
+workflow.add_node("transform_query", transform_query)  # transform_query
+workflow.add_node("web_search", web_search)  # web search
+
+# Build graph
+workflow.set_entry_point("retrieve")
+workflow.add_edge("retrieve", "grade_documents")
+workflow.add_conditional_edges(
+  "grade_documents",
+  decide_to_generate,
+  {
+    "transform_query": "transform_query",
+    "generate": "generate",
+  },
+)
+workflow.add_edge("transform_query", "web_search")
+workflow.add_edge("web_search", "generate")
+workflow.add_edge("generate", END)
+
+# Compile
+app = workflow.compile()
 
 # input form within st
 with st.form('test_form'):
